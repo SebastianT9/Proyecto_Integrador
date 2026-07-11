@@ -2,6 +2,7 @@ import cv2
 import os
 import numpy as np
 import pandas as pd
+import time
 
 input_folder = "Etnias" 
 output_folder = "Datasets_Descriptores"
@@ -17,6 +18,7 @@ def adjust_gamma(image, gamma=1.5):
     return cv2.LUT(image, table)
 
 print("🚀 Extrayendo Momentos de Hu...")
+start_total_time = time.time()
 
 for filename in os.listdir(input_folder):
     if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
@@ -25,7 +27,6 @@ for filename in os.listdir(input_folder):
             image = cv2.imread(input_path)
             if image is None: continue
             
-            # Preprocesamiento Base (Meta 2)
             image_resized = cv2.resize(image, (128, 128))
             denoised = cv2.bilateralFilter(image_resized, d=9, sigmaColor=75, sigmaSpace=75)
             enhanced = adjust_gamma(denoised, gamma=1.5)
@@ -34,11 +35,8 @@ for filename in os.listdir(input_folder):
                 gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 3
             )
             
-            # Extracción de Momentos de Hu
             moments = cv2.moments(thresh)
             hu_moments = cv2.HuMoments(moments).flatten()
-            
-            # Transformación logarítmica para normalizar la escala de los valores
             hu_log = -np.sign(hu_moments) * np.log10(np.abs(hu_moments) + 1e-10)
             
             hu_row = {"sub_id": filename}
@@ -49,6 +47,20 @@ for filename in os.listdir(input_folder):
         except Exception as e:
             print(f"❌ Error en {filename}: {e}")
 
+end_total_time = time.time()
+total_execution_time = end_total_time - start_total_time
+
 df_hu = pd.DataFrame(dataset_hu)
-df_hu.to_csv(os.path.join(output_folder, "dataset_momentos_hu.csv"), index=False)
-print(f"✅ Dataset de Hu guardado con éxito. Dimensiones: {df_hu.shape}")
+output_file_name = "dataset_momentos_hu.csv"
+df_hu.to_csv(os.path.join(output_folder, output_file_name), index=False)
+
+# --- IMPRESIÓN DE MÉTRICAS COMPARATIVAS ---
+print("\n" + "="*50)
+print("📊 COMPARACIÓN TÉCNICA - DESCRIPTOR: MOMENTOS DE HU")
+print("="*50)
+print(f"🔹 Número de características: {df_hu.shape[1] - 1} columnas (más la columna 'sub_id')")
+print(f"🔹 Formato de salida: {os.path.splitext(output_file_name)[1].upper()} ({output_file_name})")
+print(f"🔹 Tiempo de extracción total: {total_execution_time:.4f} segundos")
+print(f"🔹 Costo computacional promedio: {(total_execution_time / max(1, len(df_hu))) * 1000:.2f} ms por imagen")
+print(f"🔹 Representación de datos: Valores numéricos continuos (Punto flotante / Float64, tras escala logarítmica)")
+print("="*50 + "\n")
