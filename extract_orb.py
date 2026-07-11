@@ -2,6 +2,7 @@ import cv2
 import os
 import numpy as np
 import pandas as pd
+import time
 
 input_folder = "Etnias" 
 output_folder = "Datasets_Descriptores"
@@ -10,8 +11,6 @@ if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
 dataset_orb = []
-
-# Forzamos a extraer exactamente 50 puntos para homogeneizar las dimensiones del CSV
 orb_detector = cv2.ORB_create(nfeatures=50)
 
 def adjust_gamma(image, gamma=1.5):
@@ -19,7 +18,8 @@ def adjust_gamma(image, gamma=1.5):
     table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
     return cv2.LUT(image, table)
 
-print("🚀 Extrayendo puntos clave y descriptores ORB...")
+print("🚀 Extrayendo descriptores ORB...")
+start_total_time = time.time()
 
 for filename in os.listdir(input_folder):
     if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
@@ -28,19 +28,16 @@ for filename in os.listdir(input_folder):
             image = cv2.imread(input_path)
             if image is None: continue
             
-            # Preprocesamiento Base (Meta 2)
             image_resized = cv2.resize(image, (128, 128))
             denoised = cv2.bilateralFilter(image_resized, d=9, sigmaColor=75, sigmaSpace=75)
             enhanced = adjust_gamma(denoised, gamma=1.5)
             gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
             
-            # Extracción ORB
             keypoints, descriptors = orb_detector.detectAndCompute(gray, None)
+            fixed_descriptor_length = 50 * 32  
             
-            fixed_descriptor_length = 50 * 32  # 50 keypoints * 32 bytes = 1600 columnas
             if descriptors is not None:
                 orb_features = descriptors.flatten()
-                # Ajuste dinámico de longitud (Zero-padding si faltan puntos)
                 if len(orb_features) < fixed_descriptor_length:
                     orb_features = np.pad(orb_features, (0, fixed_descriptor_length - len(orb_features)), 'constant')
                 elif len(orb_features) > fixed_descriptor_length:
@@ -56,6 +53,20 @@ for filename in os.listdir(input_folder):
         except Exception as e:
             print(f"❌ Error en {filename}: {e}")
 
+end_total_time = time.time()
+total_execution_time = end_total_time - start_total_time
+
 df_orb = pd.DataFrame(dataset_orb)
-df_orb.to_csv(os.path.join(output_folder, "dataset_orb.csv"), index=False)
-print(f"✅ Dataset ORB guardado con éxito. Dimensiones: {df_orb.shape}")
+output_file_name = "dataset_orb.csv"
+df_orb.to_csv(os.path.join(output_folder, output_file_name), index=False)
+
+# --- IMPRESIÓN DE MÉTRICAS COMPARATIVAS ---
+print("\n" + "="*50)
+print("📊 COMPARACIÓN TÉCNICA - DESCRIPTOR: ORB")
+print("="*50)
+print(f"🔹 Número de características: {df_orb.shape[1] - 1} columnas (50 puntos clave × 32 bytes)")
+print(f"🔹 Formato de salida: {os.path.splitext(output_file_name)[1].upper()} ({output_file_name})")
+print(f"🔹 Tiempo de extracción total: {total_execution_time:.4f} segundos")
+print(f"🔹 Costo computacional promedio: {(total_execution_time / max(1, len(df_orb))) * 1000:.2f} ms por imagen")
+print(f"🔹 Representación de datos: Descriptores binarios compactos aplanados (Valores enteros de tipo Uint8 / Int64)")
+print("="*50 + "\n")
