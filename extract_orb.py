@@ -29,9 +29,11 @@ for filename in os.listdir(input_folder):
             if image is None: continue
             
             image_resized = cv2.resize(image, (128, 128))
+            
+            # --- TU MISMA ESTRATEGIA REPETIBLE ---
             denoised = cv2.bilateralFilter(image_resized, d=9, sigmaColor=75, sigmaSpace=75)
             enhanced = adjust_gamma(denoised, gamma=1.5)
-            gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
+            gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY) # <-- ORB usa este gris con texturas
             
             keypoints, descriptors = orb_detector.detectAndCompute(gray, None)
             fixed_descriptor_length = 50 * 32  
