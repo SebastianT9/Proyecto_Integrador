@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import time
 
-input_folder = "Etnias" 
+input_folder = "Etnias_Procesadas" 
 output_folder = "Datasets_Descriptores"
 
 if not os.path.exists(output_folder):
@@ -24,16 +24,8 @@ for filename in os.listdir(input_folder):
     if filename.lower().endswith(('.jpg', '.jpeg', '.png', '.bmp')):
         input_path = os.path.join(input_folder, filename)
         try:
-            image = cv2.imread(input_path)
-            if image is None: continue
-            
-            image_resized = cv2.resize(image, (128, 128))
-            denoised = cv2.bilateralFilter(image_resized, d=9, sigmaColor=75, sigmaSpace=75)
-            enhanced = adjust_gamma(denoised, gamma=1.5)
-            gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
-            thresh = cv2.adaptiveThreshold(
-                gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 3
-            )
+            thresh = cv2.imread(input_path, cv2.IMREAD_GRAYSCALE)
+            if thresh is None: continue
             
             moments = cv2.moments(thresh)
             hu_moments = cv2.HuMoments(moments).flatten()
@@ -45,7 +37,7 @@ for filename in os.listdir(input_folder):
             dataset_hu.append(hu_row)
             
         except Exception as e:
-            print(f"❌ Error en {filename}: {e}")
+            print(f"Error en {filename}: {e}")
 
 end_total_time = time.time()
 total_execution_time = end_total_time - start_total_time
