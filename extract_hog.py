@@ -2,6 +2,7 @@ import cv2
 import os
 import numpy as np
 import pandas as pd
+from skimage.feature import hog as skimage_hog
 from skimage.feature import hog
 import time
 
@@ -28,11 +29,15 @@ for filename in os.listdir(input_folder):
             image = cv2.imread(input_path)
             if image is None: continue
             
+            # Ajustamos al tamaño estándar
             image_resized = cv2.resize(image, (128, 128))
+            
+            # --- TU MISMA ESTRATEGIA REPETIBLE (Sin umbralizar) ---
             denoised = cv2.bilateralFilter(image_resized, d=9, sigmaColor=75, sigmaSpace=75)
             enhanced = adjust_gamma(denoised, gamma=1.5)
             gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
             
+            # Extracción HOG
             hog_features = hog(
                 gray, 
                 orientations=9, 
