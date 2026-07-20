@@ -108,8 +108,8 @@ for name, csv_file in datasets_features.items():
     # Verificar si logramos recuperar muestras
     if len(X_data) == 0:
         print(f"Error: El dataset {name} no pudo emparejar ninguna muestra. Columna ID usada: '{col_id}'")
-        print(f"   Ejemplo de ID en tu descriptor {name}: {list(df_feat[col_id].head(3))}")
-        print(f"   Ejemplo de llaves esperadas de etnias: {list(image_labels.keys())[:3]}")
+        print(f"Ejemplo de ID en tu descriptor {name}: {list(df_feat[col_id].head(3))}")
+        print(f"Ejemplo de llaves esperadas de etnias: {list(image_labels.keys())[:3]}")
         continue
         
     # Limpieza automática de nulos por si acaso
@@ -130,9 +130,9 @@ for name, csv_file in datasets_features.items():
     # Imprimir reporte formal de evidencias para la Meta 1
     print("-" * 50)
     print(f"DATASET ENFOQUE: {name}")
-    print(f"   🔹 Dimensión total de características: {X_data.shape[1]} columnas")
-    print(f"   🔹 Validación: {len(X_data)} muestras limpias emparejadas con éxito.")
-    print(f"   🔹 Split Entrenamiento (80%): {X_train.shape[0]} muestras")
-    print(f"   🔹 Split Prueba (20%): {X_test.shape[0]} muestras")
+    print(f"Dimensión total de características: {X_data.shape[1]} columnas")
+    print(f"Validación: {len(X_data)} muestras limpias emparejadas con éxito.")
+    print(f"Split Entrenamiento (80%): {X_train.shape[0]} muestras")
+    print(f"Split Prueba (20%): {X_test.shape[0]} muestras")
 
 print("\n¡Proceso finalizado!")

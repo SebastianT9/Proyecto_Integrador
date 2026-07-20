@@ -19,7 +19,7 @@ def adjust_gamma(image, gamma=1.5):
     table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
     return cv2.LUT(image, table)
 
-print("🚀 Extrayendo vectores HOG...")
+print("Extrayendo vectores HOG...")
 start_total_time = time.time()
 
 for filename in os.listdir(input_folder):
@@ -52,7 +52,7 @@ for filename in os.listdir(input_folder):
             dataset_hog.append(hog_row)
             
         except Exception as e:
-            print(f"❌ Error en {filename}: {e}")
+            print(f"Error en {filename}: {e}")
 
 end_total_time = time.time()
 total_execution_time = end_total_time - start_total_time
@@ -63,11 +63,11 @@ df_hog.to_csv(os.path.join(output_folder, output_file_name), index=False)
 
 # --- IMPRESIÓN DE MÉTRICAS COMPARATIVAS ---
 print("\n" + "="*50)
-print("📊 COMPARACIÓN TÉCNICA - DESCRIPTOR: HOG")
+print("COMPARACIÓN TÉCNICA - DESCRIPTOR: HOG")
 print("="*50)
-print(f"🔹 Número de características: {df_hog.shape[1] - 1} columnas (Vectores dependientes de la geometría celular)")
-print(f"🔹 Formato de salida: {os.path.splitext(output_file_name)[1].upper()} ({output_file_name})")
-print(f"🔹 Tiempo de extracción total: {total_execution_time:.4f} segundos")
-print(f"🔹 Costo computacional promedio: {(total_execution_time / max(1, len(df_hog))) * 1000:.2f} ms por imagen")
-print(f"🔹 Representación de datos: Vectores normalizados de gradientes orientados (Punto flotante / Float64 entre 0 y 1)")
+print(f"Número de características: {df_hog.shape[1] - 1} columnas (Vectores dependientes de la geometría celular)")
+print(f"Formato de salida: {os.path.splitext(output_file_name)[1].upper()} ({output_file_name})")
+print(f"Tiempo de extracción total: {total_execution_time:.4f} segundos")
+print(f"Costo computacional promedio: {(total_execution_time / max(1, len(df_hog))) * 1000:.2f} ms por imagen")
+print(f"Representación de datos: Vectores normalizados de gradientes orientados (Punto flotante / Float64 entre 0 y 1)")
 print("="*50 + "\n")

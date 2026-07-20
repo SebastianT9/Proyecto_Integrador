@@ -17,7 +17,7 @@ def adjust_gamma(image, gamma=1.5):
     table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
     return cv2.LUT(image, table)
 
-print("🚀 Extrayendo Momentos de Hu...")
+print("Extrayendo Momentos de Hu...")
 start_total_time = time.time()
 
 for filename in os.listdir(input_folder):
@@ -48,11 +48,11 @@ df_hu.to_csv(os.path.join(output_folder, output_file_name), index=False)
 
 # --- IMPRESIÓN DE MÉTRICAS COMPARATIVAS ---
 print("\n" + "="*50)
-print("📊 COMPARACIÓN TÉCNICA - DESCRIPTOR: MOMENTOS DE HU")
+print("COMPARACIÓN TÉCNICA - DESCRIPTOR: MOMENTOS DE HU")
 print("="*50)
-print(f"🔹 Número de características: {df_hu.shape[1] - 1} columnas (más la columna 'sub_id')")
-print(f"🔹 Formato de salida: {os.path.splitext(output_file_name)[1].upper()} ({output_file_name})")
-print(f"🔹 Tiempo de extracción total: {total_execution_time:.4f} segundos")
-print(f"🔹 Costo computacional promedio: {(total_execution_time / max(1, len(df_hu))) * 1000:.2f} ms por imagen")
-print(f"🔹 Representación de datos: Valores numéricos continuos (Punto flotante / Float64, tras escala logarítmica)")
+print(f"Número de características: {df_hu.shape[1] - 1} columnas (más la columna 'sub_id')")
+print(f"Formato de salida: {os.path.splitext(output_file_name)[1].upper()} ({output_file_name})")
+print(f"Tiempo de extracción total: {total_execution_time:.4f} segundos")
+print(f"Costo computacional promedio: {(total_execution_time / max(1, len(df_hu))) * 1000:.2f} ms por imagen")
+print(f"Representación de datos: Valores numéricos continuos (Punto flotante / Float64, tras escala logarítmica)")
 print("="*50 + "\n")
