@@ -298,7 +298,7 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
 
                     # 3. K-Means Clustering
                     if os.path.exists(path_kmeans):
-                        modelo_km = cargar_modelo_limpio(path_kmeans)
+                        modelo_km = cargar_modelo_joblib(path_kmeans)
                         cluster_id = modelo_km.predict(vector_final)[0]
                         st.warning(f"🔍 **K-Means ({descriptor_seleccionado}):** Asignado al **Cluster ID: {cluster_id}**")
 
