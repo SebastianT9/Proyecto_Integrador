@@ -139,8 +139,8 @@ model = models.Sequential([
 
 # Compilar el modelo
 model.compile(optimizer='adam',
-              loss='sparse_categorical_crossentropy',
-              metrics=['accuracy'])
+            loss='sparse_categorical_crossentropy',
+            metrics=['accuracy'])
 
 # --- 7. ENTRENAMIENTO DEL MODELO ---
 print("🏋️ Entrenando la CNN...")
