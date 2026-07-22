@@ -4,10 +4,7 @@ import numpy as np
 import os
 import pandas as pd
 import joblib
-import numpy.random._picker as _picker
-if not hasattr(np.random, '_mt19937'):
-    import numpy.random.MT19937 as _mt
-    np.random._mt19937 = _mt
+
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="Proyecto Integrador - Etnias", page_icon="🧠", layout="wide")
