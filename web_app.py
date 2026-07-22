@@ -145,13 +145,13 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
 
     st.markdown("### 🎯 Inferencia Dinámica de Descriptores Clásicos")
     
-    # 1. Selector del descriptor funcional
+    # Selector del descriptor funcional
     descriptor_seleccionado = st.selectbox(
         "Selecciona el Descriptor Funcional a evaluar:",
         ["HOG", "Hu", "ORB"]
     )
 
-    # 2. Selector de origen de la imagen
+    # Selector de origen de la imagen
     metodo_origen = st.sidebar.radio(
         "Origen de la imagen (Modelos Clásicos):", 
         ["Elegir imagen del Dataset", "Subir una imagen nueva"],
@@ -174,8 +174,6 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
                     path_proc = os.path.join(folder_procesada, archivo_sel)
                     if os.path.exists(path_proc):
                         img_hu_preprocesada = cv2.imread(path_proc, cv2.IMREAD_GRAYSCALE)
-                    else:
-                        st.warning(f"⚠️ No se encontró la silueta binarizada '{archivo_sel}' en 'Etnias_Procesadas'. Se computará en tiempo real.")
             else:
                 st.warning("No hay imágenes disponibles en la carpeta 'Etnias'.")
         else:
@@ -190,9 +188,7 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
     if img_raw is not None:
         col_vis, col_pred_class = st.columns([1, 1.2])
 
-        # Tamaño unificado a 128x128 idéntico a tus scripts de extracción
         img_resized = cv2.resize(img_raw, (128, 128))
-            
         denoised = cv2.bilateralFilter(img_resized, d=9, sigmaColor=75, sigmaSpace=75)
         enhanced = adjust_gamma(denoised, gamma=1.5)
         img_gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
@@ -201,32 +197,22 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
             st.subheader(f"Entrada ({descriptor_seleccionado})")
             if descriptor_seleccionado == "Hu":
                 if img_hu_preprocesada is not None:
-                    st.image(img_hu_preprocesada, use_container_width=True, channels="GRAY")
-                    st.caption("Silueta binarizada recuperada directamente de 'Etnias_Procesadas'.")
+                    st.image(img_hu_preprocesada, width='stretch', channels="GRAY")
                 else:
                     thresh_preview = cv2.adaptiveThreshold(img_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 3)
-                    st.image(thresh_preview, use_container_width=True, channels="GRAY")
-                    st.caption("Filtro Adaptativo Gaussiano generado en tiempo real.")
+                    st.image(thresh_preview, width='stretch', channels="GRAY")
             else:
-                st.image(img_gray, use_container_width=True, channels="GRAY")
-                st.caption(f"Imagen normalizada en escala de grises ({img_gray.shape[1]}x{img_gray.shape[0]}).")
+                st.image(img_gray, width='stretch', channels="GRAY")
 
         with col_pred_class:
             st.subheader(f"⚡ Inferencia de Modelos con {descriptor_seleccionado}")
 
             vector_raw = None
 
-            # --- EXTRACCIÓN ROBUSTA DE DESCRIPTORES ---
+            # Extracción de descriptores
             if descriptor_seleccionado == "HOG":
                 from skimage.feature import hog
-                # Extracción HOG exactamente igual a extract_hog.py
-                hog_features = hog(
-                    img_gray, 
-                    orientations=9, 
-                    pixels_per_cell=(16, 16), 
-                    cells_per_block=(2, 2), 
-                    visualize=False
-                )
+                hog_features = hog(img_gray, orientations=9, pixels_per_cell=(16, 16), cells_per_block=(2, 2), visualize=False)
                 vector_raw = hog_features.reshape(1, -1)
 
             elif descriptor_seleccionado == "Hu":
@@ -255,9 +241,19 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
                     orb_features = np.zeros(fixed_len, dtype=np.uint8)
                 vector_raw = orb_features.reshape(1, -1)
 
-            # -----------------------------------------------------------------
-            # EJECUCIÓN DINÁMICA DE MODELOS (.PKL)
-            # -----------------------------------------------------------------
+            # FUNCIÓN PARCHEADORA PARA CARGAR MODELOS SIN CONFLICTO DE BITGENERATOR
+            def cargar_modelo_limpio(path):
+                import pickle
+                class CustomUnpickler(pickle.Unpickler):
+                    def find_class(self, module, name):
+                        if 'MT19937' in name or 'BitGenerator' in name:
+                            from numpy.random import MT19937
+                            return MT19937
+                        return super().find_class(module, name)
+                
+                with open(path, 'rb') as f:
+                    return CustomUnpickler(f).load()
+
             clases_etnicas = ["Mestizos", "Afro-Ecuadorians", "European_Descendants", "Indigenous"]
             
             path_scaler = os.path.join("Datasets_Descriptores", f"scaler_{descriptor_seleccionado}.pkl")
@@ -272,45 +268,34 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
                     vector_scaled = scaler.transform(vector_input)
                     vector_final = vector_scaled.astype(np.float64)
 
-                    # 1. Evaluar Árbol de Decisión
+                    # 1. Árbol de Decisión
                     if os.path.exists(path_dt):
-                        modelo_dt = joblib.load(path_dt)
+                        modelo_dt = cargar_modelo_limpio(path_dt)
                         pred_dt_id = modelo_dt.predict(vector_final)[0]
                         try:
                             prob_dt = modelo_dt.predict_proba(vector_final)[0][pred_dt_id] * 100
                             st.success(f"🌲 **Árbol de Decisión ({descriptor_seleccionado}):** {clases_etnicas[pred_dt_id]} ({prob_dt:.2f}% Confianza)")
                         except:
                             st.success(f"🌲 **Árbol de Decisión ({descriptor_seleccionado}):** {clases_etnicas[pred_dt_id]}")
-                    else:
-                        st.info(f"💡 Archivo no encontrado: modelo_{descriptor_seleccionado}_arbol_de_decision.pkl")
 
-                    # 2. Evaluar Perceptrón Multicapa (MLP)
+                    # 2. Perceptrón Multicapa (MLP)
                     if os.path.exists(path_mlp):
-                        modelo_mlp = joblib.load(path_mlp)
+                        modelo_mlp = cargar_modelo_limpio(path_mlp)
                         pred_mlp_id = modelo_mlp.predict(vector_final)[0]
                         try:
                             prob_mlp = modelo_mlp.predict_proba(vector_final)[0][pred_mlp_id] * 100
                             st.info(f"🧠 **Perceptrón Multicapa ({descriptor_seleccionado}):** {clases_etnicas[pred_mlp_id]} ({prob_mlp:.2f}% Confianza)")
                         except:
                             st.info(f"🧠 **Perceptrón Multicapa ({descriptor_seleccionado}):** {clases_etnicas[pred_mlp_id]}")
-                    else:
-                        st.info(f"💡 Archivo no encontrado: modelo_{descriptor_seleccionado}_perceptron_multicapa.pkl")
 
-                    # 3. Evaluar Clustering K-Means
+                    # 3. K-Means Clustering
                     if os.path.exists(path_kmeans):
-                        modelo_km = joblib.load(path_kmeans)
+                        modelo_km = cargar_modelo_limpio(path_kmeans)
                         cluster_id = modelo_km.predict(vector_final)[0]
                         st.warning(f"🔍 **K-Means ({descriptor_seleccionado}):** Asignado al **Cluster ID: {cluster_id}**")
-                    else:
-                        st.info(f"💡 Archivo no encontrado: modelo_{descriptor_seleccionado}_kmeans.pkl")
 
                 except Exception as e:
-                    st.error(f"❌ Error durante el procesamiento matemático clásico: {e}")
-            else:
-                st.error(f"⚠️ No se encontró 'scaler_{descriptor_seleccionado}.pkl' en la carpeta.")
-
-    st.markdown("---")
-# =====================================================================
+                    st.error(f"❌ Error durante la inferencia: {e}")# =====================================================================
 # SECCIÓN 3: INFERENCIA DE ETNIA (CNN COMPARATIVA: GENERALIZADA VS MOBILENETV2)
 # =====================================================================
 elif opcion == "3. Inferencia de Etnia (CNN)":
