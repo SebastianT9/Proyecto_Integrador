@@ -71,8 +71,7 @@ for filename in os.listdir(input_folder):
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             image_resized = cv2.resize(image_rgb, (128, 128))
             
-            # NOTA: Se eliminó el bilateralFilter para NO destruir las texturas faciales (arrugas, poros) 
-            # que son vitales para que la CNN diferencie etnias.
+            # Se eliminó el bilateralFilter para conservar texturas faciales
             enhanced = adjust_gamma_rgb(image_resized, gamma=1.3)
             
             X_list.append(enhanced / 255.0)
@@ -98,7 +97,12 @@ class_weights = compute_class_weight(
 class_weight_dict = dict(enumerate(class_weights))
 print(f"Pesos asignados: {class_weight_dict}")
 
-# --- 7. ARQUITECTURA DE CNN OPTIMIZADA Y ROBUSTA ---
+
+# ==============================================================================
+#                      FASE 1: ENTRENAMIENTO DEL MODELO BASE
+# ==============================================================================
+
+# --- 7. ARQUITECTURA DE CNN CON TRANSFER LEARNING ---
 data_augmentation = tf.keras.Sequential([
     layers.RandomFlip("horizontal"),
     layers.RandomRotation(0.15),
@@ -106,28 +110,26 @@ data_augmentation = tf.keras.Sequential([
     layers.RandomBrightness(0.1)
 ])
 
-# 1. Cargamos el modelo base preentrenado (sin la capa final)
+# Cargamos el modelo base preentrenado (MobileNetV2)
 base_model = MobileNetV2(
     input_shape=(128, 128, 3), 
     include_top=False, 
     weights='imagenet'
 )
-
-# 2. Congelamos el modelo base para que no olvide lo que ya sabe
+# Lo congelamos por ahora
 base_model.trainable = False 
 
-# 3. Construimos nuestro modelo conectando las partes
 model = models.Sequential([
     layers.Input(shape=(128, 128, 3)),
     data_augmentation,
     base_model,
-    layers.GlobalAveragePooling2D(), # Aplanado especializado para Transfer Learning
+    layers.GlobalAveragePooling2D(), 
     layers.Dropout(0.4),
     layers.Dense(4, activation='softmax')
 ])
 
 model.compile(
-    optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), # Learning rate un poco más alto
+    optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), 
     loss='sparse_categorical_crossentropy',
     metrics=['accuracy']
 )
@@ -138,8 +140,8 @@ early_stopping = tf.keras.callbacks.EarlyStopping(
     restore_best_weights=True
 )
 
-# --- 8. ENTRENAMIENTO ---
-print("\n🏋️ Entrenando la CNN...")
+# --- 8. ENTRENAMIENTO FASE 1 ---
+print("\n🏋️ Entrenando la CNN (Fase 1: Capas superiores)...")
 start_time = time.time()
 
 history = model.fit(
@@ -153,20 +155,66 @@ history = model.fit(
 )
 
 end_time = time.time()
-print(f"✅ Entrenamiento completado en {round((end_time - start_time)/60, 2)} minutos.")
+print(f"✅ Entrenamiento de Fase 1 completado en {round((end_time - start_time)/60, 2)} minutos.")
 
-# --- 9. EVALUACIÓN Y MATRIZ REAL ---
-y_pred_probs = model.predict(X_val, verbose=0)
-y_pred = np.argmax(y_pred_probs, axis=1)
+
+# ==============================================================================
+#                      FASE 2: FINE-TUNING (AJUSTE FINO)
+# ==============================================================================
+
+print("\n" + "*"*50)
+print("🚀 INICIANDO FASE 2: FINE-TUNING (Ajuste Fino)")
+print("*"*50)
+
+# Descongelamos el modelo base
+base_model.trainable = True
+
+# Descongelamos solo a partir de la capa 100
+fine_tune_at = 100
+for layer in base_model.layers[:fine_tune_at]:
+    layer.trainable = False
+
+# Recompilamos con un learning rate MUCHO MÁS BAJO para no perder el preentrenamiento
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=0.00001), 
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+early_stopping_ft = tf.keras.callbacks.EarlyStopping(
+    monitor='val_loss', 
+    patience=8, 
+    restore_best_weights=True
+)
+
+fine_tune_epochs = 30
+total_epochs = 50 + fine_tune_epochs 
+
+print("\n🧠 Entrenando capas profundas de MobileNetV2...")
+history_fine = model.fit(
+    X_train_raw, y_train_raw, 
+    epochs=total_epochs, 
+    initial_epoch=history.epoch[-1], 
+    batch_size=32,
+    validation_data=(X_val, y_val),
+    class_weight=class_weight_dict, 
+    callbacks=[early_stopping_ft],
+    verbose=1
+)
+
+# --- 9. EVALUACIÓN Y GUARDADO FINAL ---
+y_pred_probs_ft = model.predict(X_val, verbose=0)
+y_pred_ft = np.argmax(y_pred_probs_ft, axis=1)
 
 print("\n" + "="*50)
-print("📊 REPORTE DE EVALUACIÓN OPTIMIZADO - CNN")
+print("📊 REPORTE DE EVALUACIÓN FINAL (DESPUÉS DE FINE-TUNING)")
 print("="*50)
-print(classification_report(y_val, y_pred, target_names=class_names, zero_division=0))
+print(classification_report(y_val, y_pred_ft, target_names=class_names, zero_division=0))
 
-print("🧱 MATRIZ DE CONFUSIÓN:")
-print(confusion_matrix(y_val, y_pred))
+print("🧱 MATRIZ DE CONFUSIÓN (Final):")
+print(confusion_matrix(y_val, y_pred_ft))
 print("="*50 + "\n")
 
-model.save(os.path.join(output_folder, "modelo_etnias_cnn_equilibrado.keras"))
-print(f"💾 Modelo guardado exitosamente en: {output_folder}")
+modelo_final_path = os.path.join(output_folder, "modelo_etnias_finetuned.keras")
+model.save(modelo_final_path)
+print(f"💾 Modelo final super-optimizado guardado exitosamente en: {modelo_final_path}")
