@@ -46,8 +46,9 @@ for filename in os.listdir(input_folder):
                     orb_features = orb_features[:fixed_descriptor_length]
             else:
                 orb_features = np.zeros(fixed_descriptor_length, dtype=np.uint8)
-                
-            orb_row = {"sub_id": filename}
+
+            clean_id = os.path.splitext(filename)[0]    
+            orb_row = {"sub_id": clean_id}
             for i, val in enumerate(orb_features):
                 orb_row[f"orb_{i+1}"] = val
             dataset_orb.append(orb_row)

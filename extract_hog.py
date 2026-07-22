@@ -44,7 +44,8 @@ for filename in os.listdir(input_folder):
                 visualize=False
             )
             
-            hog_row = {"sub_id": filename}
+            clean_id = os.path.splitext(filename)[0]
+            hog_row = {"sub_id": clean_id}
             for i, val in enumerate(hog_features):
                 hog_row[f"hog_{i+1}"] = val
             dataset_hog.append(hog_row)

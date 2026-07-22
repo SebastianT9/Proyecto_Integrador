@@ -28,8 +28,8 @@ for filename in os.listdir(input_folder):
             
             # Escala logarítmica para estabilizar magnitudes dinámicas dispares
             hu_log = -np.sign(hu_moments) * np.log10(np.abs(hu_moments) + 1e-10)
-            
-            hu_row = {"sub_id": filename}
+            clean_id = os.path.splitext(filename)[0]
+            hu_row = {"sub_id": clean_id}
             for i, val in enumerate(hu_log):
                 hu_row[f"hu_{i+1}"] = val
             dataset_hu.append(hu_row)
