@@ -4,18 +4,21 @@ import numpy as np
 import pandas as pd
 import time
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.utils.class_weight import compute_class_weight
 import tensorflow as tf
-from tensorflow.keras import layers, models
+from tensorflow.keras import layers, models, regularizers
+from tensorflow.keras.applications import MobileNetV2
 
-# --- 1. CONFIGURACIÓN DE RUTAS Y PARÁMETROS ---
+# --- 1. CONFIGURACIÓN DE RUTAS Y MAPEO ESTRICTO ---
 input_folder = "Etnias"
-csv_folder = "Meta"  
-output_folder = "Datasets_Descriptores" # Para mantener el orden de tus carpetas
+csv_folder = "Meta"
+output_folder = "Datasets_Descriptores"
 
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
-# Diccionario de mapeo de clases a números
+class_names = ["Mestizos", "Afro-Ecuadorians", "European_Descendants", "Indigenous"]
 class_mapping = {
     "Mestizos.csv": 0,
     "Afro-Ecuadorians.csv": 1,
@@ -23,13 +26,13 @@ class_mapping = {
     "Indigenous.csv": 3
 }
 
-# --- 2. FUNCIÓN DE CORRECCIÓN GAMMA (TU ESTRATEGIA REPETIBLE) ---
-def adjust_gamma(image, gamma=1.5):
+# --- 2. FUNCIÓN DE PREPROCESAMIENTO ---
+def adjust_gamma_rgb(image, gamma=1.3):
     invGamma = 1.0 / gamma
     table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
     return cv2.LUT(image, table)
 
-# --- 3. CARGAR MAPEO DE ETIQUETAS DESDE LOS CSV (SUPER INGENIERÍA DE COLUMNAS) ---
+# --- 3. CARGAR ETIQUETAS ---
 print("📊 Cargando y mapeando etiquetas desde archivos CSV...")
 image_labels = {}
 
@@ -37,137 +40,181 @@ for csv_name, class_id in class_mapping.items():
     csv_path = os.path.join(csv_folder, csv_name)
     if os.path.exists(csv_path):
         try:
-            # Intento 1: Leer normal (separado por comas)
             df = pd.read_csv(csv_path)
-            
-            # Si se leyó mal (solo hay una columna), reintentamos con punto y coma
             if df.shape[1] <= 1:
                 df = pd.read_csv(csv_path, sep=';')
                 
-            # Limpiamos los nombres de las columnas eliminando espacios en blanco o caracteres ocultos de Excel
             df.columns = df.columns.str.strip().str.lower()
-            
-            # Buscamos una columna que CONTENGA la palabra 'filename' o 'sub_id'
-            col_encontrada = None
-            for col in df.columns:
-                if 'filename' in col or 'sub_id' in col or 'file' in col:
-                    col_encontrada = col
-                    break
+            col_encontrada = next((col for col in df.columns if any(k in col for k in ['filename', 'sub_id', 'file'])), None)
             
             if col_encontrada is not None:
-                # .unique() evita procesar filas repetidas del mismo archivo
                 for filename in df[col_encontrada].dropna().unique():
-                    # Guardamos el nombre limpio y en minúsculas
-                    image_labels[str(filename).strip().lower()] = class_id
-            else:
-                # Si falla, te va a listar en pantalla las columnas que detecta para saber qué hay dentro
-                print(f"⚠️ Columnas reales detectadas en {csv_name}: {list(df.columns)}")
-                
+                    clean_name = os.path.splitext(str(filename).strip().lower())[0]
+                    image_labels[clean_name] = class_id
         except Exception as e:
-            print(f"❌ Falló la lectura del archivo {csv_name}: {e}")
-    else:
-        print(f"❌ No se encontró el archivo CSV: {csv_name}")
-        
-# --- 4. CARGAR Y PREPROCESAR LAS IMÁGENES PARA LA CNN ---
-print("🚀 Cargando y preprocesando imágenes para la CNN...")
-X_data = []
-y_data = []
+            print(f"❌ Error al leer {csv_name}: {e}")
+
+# --- 4. CARGAR Y PREPROCESAR IMÁGENES ---
+print("🚀 Cargando imágenes RGB...")
+X_list, y_list = [], []
 
 for filename in os.listdir(input_folder):
     filename_lower = filename.lower()
-    if filename_lower.endswith(('.jpg', '.jpeg', '.png', '.bmp')):
-        # Verificar si la imagen está registrada en alguno de los CSV
-        if filename_lower in image_labels:
-            input_path = os.path.join(input_folder, filename)
-            try:
-                image = cv2.imread(input_path)
-                if image is None: continue
-                
-                # Redimensionamiento estándar
-                image_resized = cv2.resize(image, (128, 128))
-                
-                # Reducción de ruido y realce de contraste (Idéntico a tus descriptores)
-                denoised = cv2.bilateralFilter(image_resized, d=9, sigmaColor=75, sigmaSpace=75)
-                enhanced = adjust_gamma(denoised, gamma=1.5)
-                gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
-                
-                # Normalizar los píxeles para la red neuronal (de 0-255 a 0-1)
-                gray_normalized = gray / 255.0
-                
-                X_data.append(gray_normalized)
-                y_data.append(image_labels[filename_lower])
-                
-            except Exception as e:
-                print(f"❌ Error al procesar {filename}: {e}")
-
-# Convertir listas a arreglos de NumPy
-X_data = np.array(X_data)
-y_data = np.array(y_data)
-
-# Añadir una dimensión de canal para indicar que es escala de grises (128, 128, 1)
-X_data = np.expand_dims(X_data, axis=-1)
-
-print(f"✅ Total de imágenes cargadas con éxito: {len(X_data)}")
-
-# --- 5. DIVISIÓN DE DATOS (ENTREMANIENTO Y VALIDACIÓN) ---
-# 80% para entrenar la red, 20% para validar resultados (sin mezclar data)
-X_train, X_val, y_train, y_val = train_test_split(X_data, y_data, test_size=0.2, random_state=42, stratify=y_data)
-
-# --- 6. DISEÑO DE LA ARQUITECTURA DE LA CNN ---
-print("🧠 Construyendo la arquitectura de la Red Neuronal Convolucional...")
-model = models.Sequential([
-    # Primera capa convolucional + max pooling
-    layers.Conv2D(32, (3, 3), activation='relu', input_shape=(128, 128, 1)),
-    layers.MaxPooling2D((2, 2)),
+    clean_id = os.path.splitext(filename_lower)[0]
     
-    # Segunda capa convolucional + max pooling
-    layers.Conv2D(64, (3, 3), activation='relu'),
-    layers.MaxPooling2D((2, 2)),
-    
-    # Tercera capa convolucional + max pooling
-    layers.Conv2D(128, (3, 3), activation='relu'),
-    layers.MaxPooling2D((2, 2)),
-    
-    # Aplanado de características
-    layers.Flatten(),
-    
-    # Capas densas de clasificación con Dropout para evitar Overfitting
-    layers.Dense(128, activation='relu'),
-    layers.Dropout(0.5),
-    layers.Dense(4, activation='softmax') # 4 neuronas de salida para las 4 etnias
+    if filename_lower.endswith(('.jpg', '.jpeg', '.png', '.bmp')) and clean_id in image_labels:
+        input_path = os.path.join(input_folder, filename)
+        try:
+            image = cv2.imread(input_path)
+            if image is None: continue
+            
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image_resized = cv2.resize(image_rgb, (128, 128))
+            
+            # Se eliminó el bilateralFilter para conservar texturas faciales
+            enhanced = adjust_gamma_rgb(image_resized, gamma=1.3)
+            
+            X_list.append(enhanced / 255.0)
+            y_list.append(image_labels[clean_id])
+        except Exception as e:
+            print(f"❌ Error en {filename}: {e}")
+
+X_data = np.array(X_list)
+y_data = np.array(y_list)
+
+# --- 5. SPLIT ESTRATIFICADO ---
+X_train_raw, X_val, y_train_raw, y_val = train_test_split(
+    X_data, y_data, test_size=0.2, random_state=42, stratify=y_data
+)
+
+# --- 6. MANEJO DE DESBALANCE CON PESOS DE CLASE ---
+print("\n⚖️ Calculando pesos de clase para manejar el desbalance...")
+class_weights = compute_class_weight(
+    class_weight='balanced', 
+    classes=np.unique(y_train_raw), 
+    y=y_train_raw
+)
+class_weight_dict = dict(enumerate(class_weights))
+print(f"Pesos asignados: {class_weight_dict}")
+
+
+# ==============================================================================
+#                      FASE 1: ENTRENAMIENTO DEL MODELO BASE
+# ==============================================================================
+
+# --- 7. ARQUITECTURA DE CNN CON TRANSFER LEARNING ---
+data_augmentation = tf.keras.Sequential([
+    layers.RandomFlip("horizontal"),
+    layers.RandomRotation(0.15),
+    layers.RandomZoom(0.15),
+    layers.RandomBrightness(0.1)
 ])
 
-# Compilar el modelo
-model.compile(optimizer='adam',
-            loss='sparse_categorical_crossentropy',
-            metrics=['accuracy'])
+# Cargamos el modelo base preentrenado (MobileNetV2)
+base_model = MobileNetV2(
+    input_shape=(128, 128, 3), 
+    include_top=False, 
+    weights='imagenet'
+)
+# Lo congelamos por ahora
+base_model.trainable = False 
 
-# --- 7. ENTRENAMIENTO DEL MODELO ---
-print("🏋️ Entrenando la CNN...")
+model = models.Sequential([
+    layers.Input(shape=(128, 128, 3)),
+    data_augmentation,
+    base_model,
+    layers.GlobalAveragePooling2D(), 
+    layers.Dropout(0.4),
+    layers.Dense(4, activation='softmax')
+])
+
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), 
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+early_stopping = tf.keras.callbacks.EarlyStopping(
+    monitor='val_loss', 
+    patience=10, 
+    restore_best_weights=True
+)
+
+# --- 8. ENTRENAMIENTO FASE 1 ---
+print("\n🏋️ Entrenando la CNN (Fase 1: Capas superiores)...")
 start_time = time.time()
 
 history = model.fit(
-    X_train, y_train,
-    epochs=20,          # Puedes ajustar el número de épocas según veas el rendimiento
+    X_train_raw, y_train_raw, 
+    epochs=50, 
     batch_size=32,
-    validation_data=(X_val, y_val)
+    validation_data=(X_val, y_val),
+    callbacks=[early_stopping],
+    class_weight=class_weight_dict, 
+    verbose=1
 )
 
 end_time = time.time()
-cnn_execution_time = end_time - start_time
+print(f"✅ Entrenamiento de Fase 1 completado en {round((end_time - start_time)/60, 2)} minutos.")
 
-# --- 8. EVALUACIÓN FINAL ---
-val_loss, val_acc = model.evaluate(X_val, y_val, verbose=0)
 
-# --- IMPRESIÓN DE MÉTRICAS (REEMPLAZA LAS ÚLTIMAS LÍNEAS DEL SCRIPT) ---
+# ==============================================================================
+#                      FASE 2: FINE-TUNING (AJUSTE FINO)
+# ==============================================================================
+
+print("\n" + "*"*50)
+print("🚀 INICIANDO FASE 2: FINE-TUNING (Ajuste Fino)")
+print("*"*50)
+
+# Descongelamos el modelo base
+base_model.trainable = True
+
+# Descongelamos solo a partir de la capa 100
+fine_tune_at = 100
+for layer in base_model.layers[:fine_tune_at]:
+    layer.trainable = False
+
+# Recompilamos con un learning rate MUCHO MÁS BAJO para no perder el preentrenamiento
+model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=0.00001), 
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+early_stopping_ft = tf.keras.callbacks.EarlyStopping(
+    monitor='val_loss', 
+    patience=8, 
+    restore_best_weights=True
+)
+
+fine_tune_epochs = 30
+total_epochs = 50 + fine_tune_epochs 
+
+print("\n🧠 Entrenando capas profundas de MobileNetV2...")
+history_fine = model.fit(
+    X_train_raw, y_train_raw, 
+    epochs=total_epochs, 
+    initial_epoch=history.epoch[-1], 
+    batch_size=32,
+    validation_data=(X_val, y_val),
+    class_weight=class_weight_dict, 
+    callbacks=[early_stopping_ft],
+    verbose=1
+)
+
+# --- 9. EVALUACIÓN Y GUARDADO FINAL ---
+y_pred_probs_ft = model.predict(X_val, verbose=0)
+y_pred_ft = np.argmax(y_pred_probs_ft, axis=1)
+
 print("\n" + "="*50)
-print("📊 REPORTE DE RENDIMIENTO DIRECTO - MODELO: CNN")
+print("📊 REPORTE DE EVALUACIÓN FINAL (DESPUÉS DE FINE-TUNING)")
 print("="*50)
-print(f"🔹 Exactitud Final en Entrenamiento: {history.history['accuracy'][-1] * 100:.2f}%")
-print(f"🔹 Exactitud Final en Validación (Accuracy): {val_acc * 100:.2f}%")
-print(f"🔹 Pérdida Final (Loss): {val_loss:.4f}")
+print(classification_report(y_val, y_pred_ft, target_names=class_names, zero_division=0))
+
+print("🧱 MATRIZ DE CONFUSIÓN (Final):")
+print(confusion_matrix(y_val, y_pred_ft))
 print("="*50 + "\n")
 
-# Guardar el modelo entrenado para futuras comparaciones
-model.save(os.path.join(output_folder, "modelo_etnias_cnn.h5"))
-print(f"💾 Modelo guardado exitosamente en '{output_folder}/modelo_etnias_cnn.h5'")
+modelo_final_path = os.path.join(output_folder, "modelo_etnias_finetuned.keras")
+model.save(modelo_final_path)
+print(f"💾 Modelo final super-optimizado guardado exitosamente en: {modelo_final_path}")
