@@ -2,7 +2,6 @@ import cv2
 import os
 import numpy as np
 import pandas as pd
-from skimage.feature import hog as skimage_hog
 from skimage.feature import hog
 import time
 
@@ -19,7 +18,7 @@ def adjust_gamma(image, gamma=1.5):
     table = np.array([((i / 255.0) ** invGamma) * 255 for i in np.arange(0, 256)]).astype("uint8")
     return cv2.LUT(image, table)
 
-print("🚀 Extrayendo vectores HOG...")
+print("🚀 Extrayendo vectores HOG optimizados...")
 start_total_time = time.time()
 
 for filename in os.listdir(input_folder):
@@ -29,15 +28,14 @@ for filename in os.listdir(input_folder):
             image = cv2.imread(input_path)
             if image is None: continue
             
-            # Ajustamos al tamaño estándar
             image_resized = cv2.resize(image, (128, 128))
             
-            # --- TU MISMA ESTRATEGIA REPETIBLE (Sin umbralizar) ---
+            # Filtro bilateral para preservar bordes eliminando ruido de alta frecuencia
             denoised = cv2.bilateralFilter(image_resized, d=9, sigmaColor=75, sigmaSpace=75)
             enhanced = adjust_gamma(denoised, gamma=1.5)
             gray = cv2.cvtColor(enhanced, cv2.COLOR_BGR2GRAY)
             
-            # Extracción HOG
+            # Extracción HOG estructurada
             hog_features = hog(
                 gray, 
                 orientations=9, 
@@ -46,7 +44,8 @@ for filename in os.listdir(input_folder):
                 visualize=False
             )
             
-            hog_row = {"sub_id": filename}
+            clean_id = os.path.splitext(filename)[0]
+            hog_row = {"sub_id": clean_id}
             for i, val in enumerate(hog_features):
                 hog_row[f"hog_{i+1}"] = val
             dataset_hog.append(hog_row)
@@ -61,13 +60,9 @@ df_hog = pd.DataFrame(dataset_hog)
 output_file_name = "dataset_hog.csv"
 df_hog.to_csv(os.path.join(output_folder, output_file_name), index=False)
 
-# --- IMPRESIÓN DE MÉTRICAS COMPARATIVAS ---
 print("\n" + "="*50)
-print("📊 COMPARACIÓN TÉCNICA - DESCRIPTOR: HOG")
+print("📊 REPORTE TÉCNICO COMPLETO - DESCRIPTOR: HOG")
 print("="*50)
-print(f"🔹 Número de características: {df_hog.shape[1] - 1} columnas (Vectores dependientes de la geometría celular)")
-print(f"🔹 Formato de salida: {os.path.splitext(output_file_name)[1].upper()} ({output_file_name})")
-print(f"🔹 Tiempo de extracción total: {total_execution_time:.4f} segundos")
-print(f"🔹 Costo computacional promedio: {(total_execution_time / max(1, len(df_hog))) * 1000:.2f} ms por imagen")
-print(f"🔹 Representación de datos: Vectores normalizados de gradientes orientados (Punto flotante / Float64 entre 0 y 1)")
+print(f"🔹 Dimensiones del dataset: {df_hog.shape[0]} muestras x {df_hog.shape[1] - 1} características")
+print(f"🔹 Tiempo total: {total_execution_time:.4f} segundos")
 print("="*50 + "\n")

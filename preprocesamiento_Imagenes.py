@@ -54,8 +54,7 @@ for filename in os.listdir(input_folder):
             )
             
             # --- GUARDAR ---
-            output_filename = os.path.splitext(filename)[0] + "_processed.png"
-            output_path = os.path.join(output_folder, output_filename)
+            output_path = os.path.join(output_folder, filename)
             
             cv2.imwrite(output_path, thresholded_image)
             procesadas += 1
