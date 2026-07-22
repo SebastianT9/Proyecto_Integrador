@@ -546,11 +546,16 @@ elif opcion == "4. Análisis Estadístico y Rendimiento":
         df_sorted = df_class.sort_values(by="F1-Score (Macro) (%)", ascending=False).reset_index(drop=True)
         
         # Incluimos el Recall en el coloreado del mapa de calor
-        st.dataframe(
-            df_sorted.style.background_gradient(cmap='viridis', subset=['Accuracy (%)', 'Precision (Macro) (%)', 'Recall (Macro) (%)', 'F1-Score (Macro) (%)'])
-                           .background_gradient(cmap='Reds', subset=['Tiempo (s)']),
-            use_container_width=True
-        )
+        # RENDERIZADO SEGURO DE LA TABLA
+        try:
+            st.dataframe(
+                df_sorted.style.background_gradient(cmap='viridis', subset=['Accuracy (%)', 'Precision (Macro) (%)', 'Recall (Macro) (%)', 'F1-Score (Macro) (%)'])
+                               .background_gradient(cmap='Reds', subset=['Tiempo (s)']),
+                use_container_width=True
+            )
+        except Exception:
+            # Fallback limpio si falla matplotlib en el servidor
+            st.dataframe(df_sorted, use_container_width=True, hide_index=True)
 
     # ==========================================
     # VISTA 4: ANÁLISIS DE CLUSTERING (CON PCA)
