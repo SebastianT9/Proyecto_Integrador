@@ -242,25 +242,27 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
                 vector_raw = orb_features.reshape(1, -1)
 
             # CARGADOR SEGURO DE MODELOS CON JOBLIB Y MONKEY-PATCH DE BITGENERATOR
+            # CARGADOR SEGURO DE MLP SIN CONFLICTO DE BITGENERATOR
             def cargar_modelo_joblib(path):
                 import sys
                 import joblib
-                import numpy.random._mt19937 as _mt
-                import numpy.random as nr
+                import io
+                import pickle
                 
-                # 1. Inyección del módulo base
-                sys.modules['numpy.random._mt19937'] = _mt
-                if not hasattr(nr, '_mt19937'):
-                    setattr(nr, '_mt19937', _mt)
-                
-                # 2. El secreto para engañar al MLP (Mapeo directo del BitGenerator)
-                if not hasattr(nr, 'BitGenerator'):
-                    setattr(nr, 'BitGenerator', _mt.MT19937)
-                if not hasattr(_mt, 'BitGenerator'):
-                    setattr(_mt, 'BitGenerator', _mt.MT19937)
-                    
-                return joblib.load(path)
+                # Clase Unpickler personalizada para ignorar el BitGenerator corrupto
+                class CleanUnpickler(pickle.Unpickler):
+                    def find_class(self, module, name):
+                        if 'MT19937' in name or '_mt19937' in module:
+                            from numpy.random import MT19937
+                            return MT19937
+                        return super().find_class(module, name)
 
+                # Si joblib falla por el BitGenerator, abrimos el binario con el Unpickler limpio
+                try:
+                    return joblib.load(path)
+                except Exception:
+                    with open(path, 'rb') as f:
+                        return CleanUnpickler(f).load()
             clases_etnicas = ["Mestizos", "Afro-Ecuadorians", "European_Descendants", "Indigenous"]
             
             path_scaler = os.path.join("Datasets_Descriptores", f"scaler_{descriptor_seleccionado}.pkl")
