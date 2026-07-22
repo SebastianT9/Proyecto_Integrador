@@ -153,10 +153,8 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
                 archivo_sel = st.selectbox("Selecciona un archivo del dataset:", archivos, key="sel_archivo_clasico")
                 img_raw = cv2.imread(os.path.join(folder_original, archivo_sel))
                 
-                # CORRECCIÓN: Búsqueda directa del mismo nombre sin _processed
                 if descriptor_seleccionado == "Hu" and os.path.exists(folder_procesada):
                     path_proc = os.path.join(folder_procesada, archivo_sel)
-                    
                     if os.path.exists(path_proc):
                         img_hu_preprocesada = cv2.imread(path_proc, cv2.IMREAD_GRAYSCALE)
                     else:
@@ -175,10 +173,8 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
     if img_raw is not None:
         col_vis, col_pred_class = st.columns([1, 1.2])
 
-        if descriptor_seleccionado == "HOG":
-            img_resized = cv2.resize(img_raw, (64, 64))
-        else:
-            img_resized = cv2.resize(img_raw, (128, 128))
+        # Tamaño unificado a 128x128 idéntico a tus scripts de extracción
+        img_resized = cv2.resize(img_raw, (128, 128))
             
         denoised = cv2.bilateralFilter(img_resized, d=9, sigmaColor=75, sigmaSpace=75)
         enhanced = adjust_gamma(denoised, gamma=1.5)
@@ -203,14 +199,18 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
 
             vector_raw = None
 
+            # --- EXTRACCIÓN ROBUSTA DE DESCRIPTORES ---
             if descriptor_seleccionado == "HOG":
-                win_size = (64, 64)
-                block_size = (16, 16)
-                block_stride = (8, 8)
-                cell_size = (8, 8)
-                nbins = 9
-                hog_extractor = cv2.HOGDescriptor(win_size, block_size, block_stride, cell_size, nbins)
-                vector_raw = hog_extractor.compute(img_gray).flatten().reshape(1, -1)
+                from skimage.feature import hog
+                # Extracción HOG exactamente igual a extract_hog.py
+                hog_features = hog(
+                    img_gray, 
+                    orientations=9, 
+                    pixels_per_cell=(16, 16), 
+                    cells_per_block=(2, 2), 
+                    visualize=False
+                )
+                vector_raw = hog_features.reshape(1, -1)
 
             elif descriptor_seleccionado == "Hu":
                 if img_hu_preprocesada is not None:
@@ -220,23 +220,23 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
                     thresh_hu = cv2.adaptiveThreshold(img_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 3)
                     moments = cv2.moments(thresh_hu)
                     
-                huMoments = cv2.HuMoments(moments)
-                for i in range(0, 7):
-                    if huMoments[i] != 0:
-                        huMoments[i] = -1 * np.sign(huMoments[i]) * np.log10(np.abs(huMoments[i]))
-                vector_raw = huMoments.flatten().reshape(1, -1)
+                huMoments = cv2.HuMoments(moments).flatten()
+                hu_log = -np.sign(huMoments) * np.log10(np.abs(huMoments) + 1e-10)
+                vector_raw = hu_log.reshape(1, -1)
 
             elif descriptor_seleccionado == "ORB":
-                orb = cv2.ORB_create(nfeatures=50)
+                orb = cv2.ORB_create(nfeatures=50, scoreType=cv2.ORB_FAST_SCORE)
                 kp, des = orb.detectAndCompute(img_gray, None)
+                fixed_len = 50 * 32
                 if des is not None:
-                    vector_raw = des.flatten().reshape(1, -1)
-                    if vector_raw.shape[1] > 1600:
-                        vector_raw = vector_raw[:, :1600]
-                    elif vector_raw.shape[1] < 1600:
-                        vector_raw = np.pad(vector_raw, ((0,0), (0, 1600 - vector_raw.shape[1])), 'constant')
+                    orb_features = des.flatten()
+                    if len(orb_features) < fixed_len:
+                        orb_features = np.pad(orb_features, (0, fixed_len - len(orb_features)), 'constant')
+                    else:
+                        orb_features = orb_features[:fixed_len]
                 else:
-                    vector_raw = np.zeros((1, 1600))
+                    orb_features = np.zeros(fixed_len, dtype=np.uint8)
+                vector_raw = orb_features.reshape(1, -1)
 
             # -----------------------------------------------------------------
             # EJECUCIÓN DINÁMICA DE MODELOS (.PKL)
