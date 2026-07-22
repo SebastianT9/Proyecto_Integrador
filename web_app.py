@@ -243,14 +243,22 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
 
             # CARGADOR SEGURO DE MODELOS CON JOBLIB Y MONKEY-PATCH DE BITGENERATOR
             def cargar_modelo_joblib(path):
+                import sys
+                import joblib
                 import numpy.random._mt19937 as _mt
                 import numpy.random as nr
                 
-                # Inyección temporal en el módulo de aleatorios de NumPy
+                # 1. Inyección del módulo base
                 sys.modules['numpy.random._mt19937'] = _mt
                 if not hasattr(nr, '_mt19937'):
                     setattr(nr, '_mt19937', _mt)
                 
+                # 2. El secreto para engañar al MLP (Mapeo directo del BitGenerator)
+                if not hasattr(nr, 'BitGenerator'):
+                    setattr(nr, 'BitGenerator', _mt.MT19937)
+                if not hasattr(_mt, 'BitGenerator'):
+                    setattr(_mt, 'BitGenerator', _mt.MT19937)
+                    
                 return joblib.load(path)
 
             clases_etnicas = ["Mestizos", "Afro-Ecuadorians", "European_Descendants", "Indigenous"]
