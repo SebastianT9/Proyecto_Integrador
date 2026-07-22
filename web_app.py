@@ -1,10 +1,26 @@
+import sys
+import numpy as np
+import numpy.random as nr
+
+# --- PARCHE ANTI-BITGENERATOR PARA JOBLIB / NUMPY ---
+try:
+    import numpy.random._mt19937 as _mt19937
+    sys.modules['numpy.random._mt19937'] = _mt19937
+except Exception:
+    pass
+
+try:
+    if not hasattr(nr, '_mt19937'):
+        nr._mt19937 = nr.bit_generator
+except Exception:
+    pass
+# ---------------------------------------------------
+
 import streamlit as st
 import cv2
-import numpy as np
 import os
 import pandas as pd
 import joblib
-
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="Proyecto Integrador - Etnias", page_icon="🧠", layout="wide")
