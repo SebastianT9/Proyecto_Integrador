@@ -241,18 +241,17 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
                     orb_features = np.zeros(fixed_len, dtype=np.uint8)
                 vector_raw = orb_features.reshape(1, -1)
 
-            # FUNCIÓN PARCHEADORA PARA CARGAR MODELOS SIN CONFLICTO DE BITGENERATOR
-            def cargar_modelo_limpio(path):
-                import pickle
-                class CustomUnpickler(pickle.Unpickler):
-                    def find_class(self, module, name):
-                        if 'MT19937' in name or 'BitGenerator' in name:
-                            from numpy.random import MT19937
-                            return MT19937
-                        return super().find_class(module, name)
+            # CARGADOR SEGURO DE MODELOS CON JOBLIB Y MONKEY-PATCH DE BITGENERATOR
+            def cargar_modelo_joblib(path):
+                import numpy.random._mt19937 as _mt
+                import numpy.random as nr
                 
-                with open(path, 'rb') as f:
-                    return CustomUnpickler(f).load()
+                # Inyección temporal en el módulo de aleatorios de NumPy
+                sys.modules['numpy.random._mt19937'] = _mt
+                if not hasattr(nr, '_mt19937'):
+                    setattr(nr, '_mt19937', _mt)
+                
+                return joblib.load(path)
 
             clases_etnicas = ["Mestizos", "Afro-Ecuadorians", "European_Descendants", "Indigenous"]
             
@@ -263,14 +262,14 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
 
             if os.path.exists(path_scaler) and vector_raw is not None:
                 try:
-                    scaler = joblib.load(path_scaler)
+                    scaler = cargar_modelo_joblib(path_scaler)
                     vector_input = vector_raw.astype(np.float64)
                     vector_scaled = scaler.transform(vector_input)
                     vector_final = vector_scaled.astype(np.float64)
 
                     # 1. Árbol de Decisión
                     if os.path.exists(path_dt):
-                        modelo_dt = cargar_modelo_limpio(path_dt)
+                        modelo_dt = cargar_modelo_joblib(path_dt)
                         pred_dt_id = modelo_dt.predict(vector_final)[0]
                         try:
                             prob_dt = modelo_dt.predict_proba(vector_final)[0][pred_dt_id] * 100
@@ -280,13 +279,22 @@ elif opcion == "2. Comparativa de Modelos Clásicos":
 
                     # 2. Perceptrón Multicapa (MLP)
                     if os.path.exists(path_mlp):
-                        modelo_mlp = cargar_modelo_limpio(path_mlp)
+                        modelo_mlp = cargar_modelo_joblib(path_mlp)
                         pred_mlp_id = modelo_mlp.predict(vector_final)[0]
                         try:
                             prob_mlp = modelo_mlp.predict_proba(vector_final)[0][pred_mlp_id] * 100
                             st.info(f"🧠 **Perceptrón Multicapa ({descriptor_seleccionado}):** {clases_etnicas[pred_mlp_id]} ({prob_mlp:.2f}% Confianza)")
                         except:
                             st.info(f"🧠 **Perceptrón Multicapa ({descriptor_seleccionado}):** {clases_etnicas[pred_mlp_id]}")
+
+                    # 3. K-Means Clustering
+                    if os.path.exists(path_kmeans):
+                        modelo_km = cargar_modelo_joblib(path_kmeans)
+                        cluster_id = modelo_km.predict(vector_final)[0]
+                        st.warning(f"🔍 **K-Means ({descriptor_seleccionado}):** Asignado al **Cluster ID: {cluster_id}**")
+
+                except Exception as e:
+                    st.error(f"❌ Error durante la inferencia: {e}")
 
                     # 3. K-Means Clustering
                     if os.path.exists(path_kmeans):
